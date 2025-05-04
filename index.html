@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Mini GTA Game</title>
+  <style>
+    canvas {
+      display: block;
+      margin: 20px auto;
+      border: 3px solid black;
+      background: url('https://i.imgur.com/rXY3eW8.png') no-repeat center center;
+      background-size: cover;
+    }
+    #hud {
+      text-align: center;
+      font-family: Arial, sans-serif;
+      font-size: 18px;
+    }
+    #controls button {
+      margin: 5px;
+      padding: 10px 15px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="hud">
+  <div>Health: <span id="health">100</span></div>
+  <div>Score: <span id="score">0</span></div>
+  <div>Vehicle: <span id="vehicle">Turismo</span> | Press 1-Turismo, 2-NRG500, 3-Rhino</div>
+</div>
+
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+
+<div id="controls" style="text-align:center; margin-top: 10px;">
+  <button onclick="inputCommand('up')">Up</button>
+  <button onclick="inputCommand('left')">Left</button>
+  <button onclick="inputCommand('right')">Right</button>
+  <button onclick="inputCommand('down')">Down</button><br><br>
+
+  <button onclick="inputCommand('jump')">Jump</button>
+  <button onclick="inputCommand('run')">Run</button>
+  <button onclick="inputCommand('enter')">Get In Car</button>
+  <button onclick="inputCommand('exit')">Exit Car</button>
+</div>
+
+<audio id="shootSound" src="https://www.soundjay.com/mechanical/sounds/mechanical-gunshot-01.mp3" preload="auto"></audio>
+<audio id="explosionSound" src="https://www.soundjay.com/explosion/sounds/explosion-01.mp3" preload="auto"></audio>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const shootSound = document.getElementById("shootSound");
+const explosionSound = document.getElementById("explosionSound");
+
+let health = 100;
+let score = 0;
+let currentVehicle = "turismo";
+let isRunning = false;
+let isJumping = false;
+let inVehicle = true;
+
+const keys = {};
+const bullets = [];
+const explosions = [];
+
+const vehicles = {
+  turismo: { w: 30, h: 50, speed: 4, color: "red" },
+  nrg500: { w: 15, h: 40, speed: 6, color: "green" },
+  rhino: { w: 60, h: 60, speed: 2, color: "gray" }
+};
+
+const player = {
+  x: 300,
+  y: 200,
+  ...vehicles[currentVehicle]
+};
+
+const police = [
+  { x: 100, y: 100, w: 30, h: 50, speed: 1.5, color: "blue" },
+  { x: 500, y: 300, w: 30, h: 50, speed: 1.5, color: "blue" }
+];
+
+document.addEventListener("keydown", e => {
+  keys[e.key] = true;
+  if (e.key === " ") shootBullet();
+
+  if (e.key === "1") changeVehicle("turismo");
+  if (e.key === "2") changeVehicle("nrg500");
+  if (e.key === "3") changeVehicle("rhino");
+});
+
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+function inputCommand(cmd) {
+  switch (cmd) {
+    case "up": keys["ArrowUp"] = true; break;
+    case "down": keys["ArrowDown"] = true; break;
+    case "left": keys["ArrowLeft"] = true; break;
+    case "right": keys["ArrowRight"] = true; break;
+    case "jump": jump(); break;
+    case "run": toggleRun(); break;
+    case "enter": enterVehicle(); break;
+    case "exit": exitVehicle(); break;
+  }
+  setTimeout(() => {
+    keys["ArrowUp"] = keys["ArrowDown"] = keys["ArrowLeft"] = keys["ArrowRight"] = false;
+  }, 200);
+}
+
+function toggleRun() {
+  isRunning = !isRunning;
+  if (inVehicle) {
+    player.speed = vehicles[currentVehicle].speed + (isRunning ? 2 : 0);
+  } else {
+    player.speed = isRunning ? 4 : 2;
+  }
+}
+
+function jump() {
+  if (!isJumping) {
+    isJumping = true;
+    const originalY = player.y;
+    let jumpHeight = 0;
+    const jumpInterval = setInterval(() => {
+      if (jumpHeight < 30) {
+        player.y -= 4;
+        jumpHeight += 4;
+      } else {
+        clearInterval(jumpInterval);
+        const fallInterval = setInterval(() => {
+          if (player.y < originalY) {
+            player.y += 4;
+          } else {
+            clearInterval(fallInterval);
+            isJumping = false;
+          }
+        }, 20);
+      }
+    }, 20);
+  }
+}
+
+function enterVehicle() {
+  if (!inVehicle) {
+    inVehicle = true;
+    changeVehicle(currentVehicle);
+  }
+}
+
+function exitVehicle() {
+  if (inVehicle) {
+    inVehicle = false;
+    player.speed = isRunning ? 4 : 2;
+    document.getElementById("vehicle").textContent = "On Foot";
+  }
+}
+
+function changeVehicle(type) {
+  const v = vehicles[type];
+  player.w = v.w;
+  player.h = v.h;
+  player.speed = v.speed + (isRunning ? 2 : 0);
+  player.color = v.color;
+  currentVehicle = type;
+  inVehicle = true;
+  document.getElementById("vehicle").textContent = type.toUpperCase();
+}
+
+function movePlayer() {
+  if (keys["ArrowUp"]) player.y -= player.speed;
+  if (keys["ArrowDown"]) player.y += player.speed;
+  if (keys["ArrowLeft"]) player.x -= player.speed;
+  if (keys["ArrowRight"]) player.x += player.speed;
+}
+
+function shootBullet() {
+  bullets.push({
+    x: player.x + player.w / 2 - 5,
+    y: player.y,
+    w: 10,
+    h: 10,
+    speed: 5
+  });
+  shootSound.play();
+}
+
+function moveBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    bullets[i].y -= bullets[i].speed;
+    if (bullets[i].y < 0) bullets.splice(i, 1);
+  }
+}
+
+function drawEntity(e) {
+  ctx.fillStyle = e.color;
+  ctx.fillRect(e.x, e.y, e.w, e.h);
+}
+
+function movePolice() {
+  police.forEach(p => {
+    const dx = player.x - p.x;
+    const dy = player.y - p.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    p.x += (dx / dist) * p.speed;
+    p.y += (dy / dist) * p.speed;
+
+    if (
+      player.x < p.x + p.w &&
+      player.x + player.w > p.x &&
+      player.y < p.y + p.h &&
+      player.y + player.h > p.y
+    ) {
+      health -= 1;
+      document.getElementById("health").textContent = health;
+    }
+  });
+}
+
+function checkBulletHits() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    for (let j = police.length - 1; j >= 0; j--) {
+      const b = bullets[i], p = police[j];
+      if (
+        b.x < p.x + p.w &&
+        b.x + b.w > p.x &&
+        b.y < p.y + p.h &&
+        b.y + b.h > p.y
+      ) {
+        explosions.push({ x: p.x, y: p.y, timer: 20 });
+        bullets.splice(i, 1);
+        police.splice(j, 1);
+        score += 100;
+        document.getElementById("score").textContent = score;
+        explosionSound.play();
+        break;
+      }
+    }
+  }
+}
+
+function drawExplosions() {
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    const e = explosions[i];
+    ctx.beginPath();
+    ctx.arc(e.x + 15, e.y + 25, 20, 0, Math.PI * 2);
+    ctx.fillStyle = "orange";
+    ctx.fill();
+    e.timer--;
+    if (e.timer <= 0) explosions.splice(i, 1);
+  }
+}
+
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  movePlayer();
+  movePolice();
+  moveBullets();
+  checkBulletHits();
+
+  drawEntity(player);
+  police.forEach(drawEntity);
+  bullets.forEach(b => {
+    ctx.fillStyle = "yellow";
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+  });
+  drawExplosions();
+
+  if (health <= 0) {
+    alert("Game Over! Your Score: " + score);
+    window.location.reload();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+
+</body>
+</html>
